@@ -27,10 +27,10 @@ public class ReadFtmTXT
         List<SequenceLine>[] EntireMeasure;
 
         EntireMeasure = new List<SequenceLine>[Constants.Sound_Channels];
-		for(int i = 0; i < EntireMeasure.Length; i++)
-		{
-			EntireMeasure[i] = new List<SequenceLine>();
-		}
+        for(int i = 0; i < EntireMeasure.Length; i++)
+        {
+            EntireMeasure[i] = new List<SequenceLine>();
+        }
 
         string lineOfText;
         while ((lineOfText = file.ReadLine()) != null)
@@ -109,10 +109,10 @@ public class ReadFtmTXT
                         Master.Measures[sc++].Add(s.ToArray());
                     }
                     EntireMeasure = new List<SequenceLine>[Constants.Sound_Channels];
-					for(int i = 0; i < EntireMeasure.Length; i++)
-					{
-						EntireMeasure[i] = new List<SequenceLine>();
-					}
+                    for(int i = 0; i < EntireMeasure.Length; i++)
+                    {
+                        EntireMeasure[i] = new List<SequenceLine>();
+                    }
                     Pattern_Read = false;
                 }
             }

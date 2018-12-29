@@ -40,101 +40,87 @@ namespace NinjaGaidenMusicConverty
 					bool IsBlank = true;
                     for (int i = 0; i < Measure.Length; i++)
                     {
-                        if (SoundChannel == (int)Constants.Channel.Square1)
-                        {
-                            if (MeasureNumber == 3)
-                            {
-                                if (i == 0x1)
-                                {
-
-                                }
-                            }
-                        }
-
                         Console.WriteLine(string.Format("Soundchannel: {0} Measure: {1} Line {2}", SoundChannel.ToString("X2"), MeasureNumber.ToString("X2"), i.ToString("X2")));
                         
                         if(Measure[i].Note == "===") break;
 
                         IsBlank = true;
-
-						if (SoundChannel != (int)Soundchannel.Noise)
-						{
-							Current_Note = ConvertNote(Measure[i].Note, out IsBlank);
-						}
-						else
-						{
-							Current_Note = ConvertNoiseNote(Measure[i].Note, out IsBlank);
-						}
-
-						s_Current_Note = Measure[i].Note;
-						
-						if (Measure[i].Volume != Constants.b_NULL)
-						{
-							Current_Volume = Measure[i].Volume;
-						}
-						else
-						{
-							Current_Volume = Prev_Volume;
-						}														
-						Current_SFX = Measure[i].Effects;
-
-                        if (IsBlank){
-							Curr_Length++;
-							continue;
-						}
+                        if (SoundChannel != (int)Soundchannel.Noise)
+                        {
+                            Current_Note = ConvertNote(Measure[i].Note, out IsBlank);
+                        }
+                        else
+                        {
+                            Current_Note = ConvertNoiseNote(Measure[i].Note, out IsBlank);
+                        }
                         
-						//add note length code if length changes or if inserting the first line.
-						Console.WriteLine("Prev_Length " + Prev_Length + " Curr_Length " + Curr_Length);
-						if ((Prev_Length != Curr_Length) && (Curr_Length != 0))
-						{
-							Console.WriteLine("Pointer" + TickPointer + "  Value " + NoteLengthCode(Curr_Length));
-							MeasureBytes.Insert(TickPointer,NoteLengthCode(Curr_Length));
-							Prev_Length = Curr_Length;
-						}
-						Curr_Length = 0;
-						TickPointer = MeasureBytes.Count;
-
-						//add volume code if volume changes
-						if (Current_Volume != Prev_Volume)
-						{
-							foreach (byte b1 in GetVolume(Current_Volume))
-							{
-								MeasureBytes.Add(b1);
-							}
-						}
-
-						if (Current_SFX != null)
-						{
-							foreach (Effect sfx in Current_SFX)
-							{
-								foreach (byte b1 in ProcessSFX(sfx))
-								{
-									MeasureBytes.Add(b1);
-								}
-							}
-						}
-						MeasureBytes.Add(Current_Note);
-						Current_Note = 0;
-						//ignore empty volumes.
-						if (Current_Volume != Constants.b_NULL)
-						{
-							if (SoundChannel != (int)Constants.Channel.Noise)
-							{
-								Prev_Volume = Current_Volume;
-								Current_Volume = 0;
-							}
-						}
-						s_Current_Note = "";
-						Current_SFX = null;
-						Curr_Length++;
+                        s_Current_Note = Measure[i].Note;
+						
+                        if (Measure[i].Volume != Constants.b_NULL)
+                        {
+                            Current_Volume = Measure[i].Volume;
+                        }
+                        else
+                        {
+                            Current_Volume = Prev_Volume;
+                        }
+                        Current_SFX = Measure[i].Effects;
+                        
+                        if (IsBlank)
+                        {
+                            Curr_Length++;
+                            continue;
+                        }
+                        
+                        //add note length code if length changes or if inserting the first line.
+                        if ((Prev_Length != Curr_Length) && (Curr_Length != 0))
+                        {
+                            MeasureBytes.Insert(TickPointer,NoteLengthCode(Curr_Length));
+                            Prev_Length = Curr_Length;
+                        }
+                        Curr_Length = 0;
+                        TickPointer = MeasureBytes.Count;
+                        
+                        //add volume code if volume changes
+                        if (Current_Volume != Prev_Volume)
+                        {
+                            foreach (byte b1 in GetVolume(Current_Volume))
+                            {
+                                MeasureBytes.Add(b1);
+                            }
+                        }
+                        
+                        if (Current_SFX != null)
+                        {
+                            foreach (Effect sfx in Current_SFX)
+                            {
+                                foreach (byte b1 in ProcessSFX(sfx))
+                                {
+                                    MeasureBytes.Add(b1);
+                                }
+                            }
+                        }
+                        MeasureBytes.Add(Current_Note);
+                        Current_Note = 0;
+                        //ignore empty volumes.
+                        if (Current_Volume != Constants.b_NULL)
+                        {
+                            if (SoundChannel != (int)Constants.Channel.Noise)
+                            {
+                                Prev_Volume = Current_Volume;
+                                Current_Volume = 0;
+                            }
+                        }
+                        s_Current_Note = "";
+                        Current_SFX = null;
+                        Curr_Length++;
                     }
                     if((MeasureBytes.Count != 0) && IsBlank){
-						if ((Prev_Length != Curr_Length) && (Curr_Length != 0))
-						{
-							Console.WriteLine("Pointer" + TickPointer + "  Value " + NoteLengthCode(Curr_Length));
-							MeasureBytes.Insert(TickPointer,NoteLengthCode(Curr_Length));
-						}
-					}
+                        if ((Prev_Length != Curr_Length) && (Curr_Length != 0))
+                        {
+                            MeasureBytes.Insert(TickPointer,NoteLengthCode(Curr_Length));
+                        }
+                    }
                     
                     Master.Byte_Data[SoundChannel].Add(MeasureBytes);
                     MeasureNumber++;
@@ -151,7 +137,7 @@ namespace NinjaGaidenMusicConverty
             switch (sfx.Effect_Prefix)
             {
                 case "4":
-                    if (sfx.Argument == 0)
+                    if (sfx.Argument != 0)
                     {
                         Bytes.Add(0xED); //enable vibrato.
                     }
