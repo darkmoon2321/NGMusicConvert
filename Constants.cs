@@ -9,7 +9,8 @@ public static class Constants
     public const int NULL = -1;
     public const int b_NULL = 0xFF;
     public const int Sound_Channels = 5;
-
+	public static readonly byte [] Music_Channels = new byte[] {0x04, 0x05, 0x02, 0x07, 0x06};
+	
     public enum Channel
     {
         Square1,
@@ -18,6 +19,4 @@ public static class Constants
         Noise,
         DPCM
     }
-
-
 }

@@ -15,11 +15,16 @@ public class ReadFtmTXT
         var file = new System.IO.StreamReader(filestream, System.Text.Encoding.UTF8, true, 128);
 
         bool Found_Tracks_Header = false;
-
+		Master.Measure_Length = 0;
+		bool Measure_Length_Found = false;
         bool Pattern_Read = false;
         int PatternNo = 0;
-
-        for (int i = 0; i < Master.Measures.Length; i++)
+        for(int i = 0; i < Constants.Sound_Channels;i++){
+			Master.Measure_Order[i] = new List<byte>();
+			Master.Final_Note[i] = new List<byte>();
+		}
+		Master.Linear_Data = new List<byte>();
+		for(int i = 0; i < Master.Measures.Length; i++)
         {
             Master.Measures[i] = new List<SequenceLine[]>();
         }
@@ -39,6 +44,14 @@ public class ReadFtmTXT
             {
                 Found_Tracks_Header = true;
                 continue;
+            }
+            else if (lineOfText.Contains("ORDER")){
+                int position = 11;
+                for(int i = 0;i < Constants.Sound_Channels;i++){
+                    if(position >= lineOfText.Length) break;
+                    Master.Measure_Order[i].Add(Master.getByteFromText(lineOfText,position));
+                    position += 3;
+                }
             }
             else if (lineOfText.Contains("TRACK"))
             {
@@ -100,6 +113,7 @@ public class ReadFtmTXT
                         }
                         EntireMeasure[SoundChannel++].Add(new SequenceLine(Note, Instrument, Volume, l_effect));
                     }
+                    if(!Measure_Length_Found) Master.Measure_Length++;
                 }
                 else
                 {
@@ -114,6 +128,7 @@ public class ReadFtmTXT
                         EntireMeasure[i] = new List<SequenceLine>();
                     }
                     Pattern_Read = false;
+                    Measure_Length_Found = true;
                 }
             }
         }

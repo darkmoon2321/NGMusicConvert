@@ -5,8 +5,17 @@ using System;
 public static class Master
 {
     public static List<SequenceLine[]>[] Measures = new List<SequenceLine[]>[Constants.Sound_Channels];
+    public static List<byte>[] Measure_Order = new List<byte>[Constants.Sound_Channels];
+    public static int Measure_Length;
     public static int Speed;
-	public static string convertByteToHexString(byte toConvert){
+    public static List<List<byte>>[] Byte_Data = new List<List<byte>>[Constants.Sound_Channels];
+    public static List<byte> Linear_Data;
+    public static int [] Measure_Loop_Pointers = new int[Constants.Sound_Channels];
+    public static int [] Linear_Channel_Pointers = new int[Constants.Sound_Channels];
+    public static List<byte>[] Final_Note = new List<byte>[Constants.Sound_Channels]; 
+    public static int ROM_Offset;
+    public static byte Final_Loop_Measure;
+    public static string convertByteToHexString(byte toConvert){
         int i=0;
         byte[] letters = new byte[2];
         string s = "";
@@ -22,7 +31,18 @@ public static class Master
         }
         return s;
     }
-    public static List<List<byte>>[] Byte_Data = new List<List<byte>>[Constants.Sound_Channels];
+    public static byte getByteFromText(string text,int pos){
+        byte result = 0;
+        byte digit;
+        for(int i=0;i<2;i++){
+		    digit = (byte)text[pos++];
+            digit = (byte)((digit >= 65) ? digit - 55 : digit - 48);
+            if(digit > 0xf) return 0xff;
+            result <<= 4;
+            result |= digit;
+        }
+        return result;
+    }
     public static void WriteFiles()
     {
         string FileName = "output.txt";
@@ -48,5 +68,10 @@ public static class Master
             }
         }
         File.WriteAllText("output.txt",Output);
+        
+        Output = "";
+        
+        for(int i = 0;i<Linear_Data.Count;i++) Output += (convertByteToHexString(Linear_Data[i]) + ' ');
+        File.WriteAllText("linear_output.txt",Output);
     }
 }
