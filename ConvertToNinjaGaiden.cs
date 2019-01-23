@@ -408,6 +408,9 @@ namespace NinjaGaidenMusicConverty
                 Master.Linear_Data.Insert((j*3)+2,(byte)(Channel_Pointer >> 8));
             }
             Master.Linear_Data.Insert(j*3,0xFF);
+            for(j=0;j<Master.Linear_Data.Count;j++) Master.ROM_Data[Master.ROM_Offset + j] = Master.Linear_Data[j];
+            BinaryWriter writer = new BinaryWriter(File.Open(Master.ROM_Path, FileMode.Create));
+            for(j=0;j<Master.ROM_Data.Count;j++) writer.Write(Master.ROM_Data[j]);
         }
         
         private List<bool> FindValidLoopLocations(int start,int end){
