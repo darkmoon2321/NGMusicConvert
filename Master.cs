@@ -5,6 +5,7 @@ using System;
 public static class Master
 {
     public static List<SequenceLine[]>[] Measures = new List<SequenceLine[]>[Constants.Sound_Channels];
+    public static List<int> Measure_Lengths;
     public static List<List<byte>> Instrument_Envelopes;
     public static List<List<byte>> Macros;
     public static List<List<byte>> Envelope_Volumes;

@@ -124,7 +124,6 @@ namespace NinjaGaidenMusicConverty
                                 MeasureBytes.Add(b1);
                             }
                         }
-                        
                         if (Current_SFX != null)
                         {
                             foreach (Effect sfx in Current_SFX)
@@ -197,9 +196,11 @@ namespace NinjaGaidenMusicConverty
                     MeasureNum = Master.Measure_Order[SoundChannel][i];
                     if(i == Master.Final_Loop_Measure){
                         Master.Measure_Loop_Pointers[SoundChannel] = Master.Linear_Data.Count;
+                        Master.Linear_Data.Add(0xE1);   //Made up control character.  Use this to indicate that instrument/volume/tempo settings must be present here. 
+                        Master.Linear_Data.Add(0x00);   //dummy byte
                     }
                     if(Master.Byte_Data[SoundChannel][MeasureNum].Count == 0){
-                        List <byte> LengthList = NoteLengthCode(Master.Measure_Length);
+                        List <byte> LengthList = NoteLengthCode(Master.Measure_Lengths[MeasureNum]);
                         for(j=0;j<LengthList.Count;j++){
                             Master.Linear_Data.Add(LengthList[j]);
                             Master.Linear_Data.Add(Prev_Note);
@@ -207,6 +208,11 @@ namespace NinjaGaidenMusicConverty
                     }
                     else{
                         for(j=0;j<Master.Byte_Data[SoundChannel][MeasureNum].Count;j++) Master.Linear_Data.Add(Master.Byte_Data[SoundChannel][MeasureNum][j]);
+                        /*if(i == 0){
+                            string debug_out = "SoundChannel " + Master.convertByteToHexString((byte)SoundChannel) + ' ';
+                            for(j=Master.Linear_Channel_Pointers[SoundChannel];j<Master.Linear_Data.Count;j++) debug_out += Master.convertByteToHexString((byte)Master.Linear_Data[j]) + ' ';
+                            Console.WriteLine(debug_out);
+                        }*/
                         Prev_Note = Master.Final_Note[SoundChannel][MeasureNum];
                     }
                 }
@@ -218,6 +224,8 @@ namespace NinjaGaidenMusicConverty
                 Prev_Matches.Add(0xff);
                 Last_Volume = -1;
                 Last_Instrument = -1;
+                bool Found_Final_Loop = false;
+                bool Ticks_Set = false;
                 for(int i = start;i<end;i++){
                     if(is_argument[i - start]) continue;
                     if(Master.Linear_Data[i] == 0xE0){
@@ -238,26 +246,42 @@ namespace NinjaGaidenMusicConverty
                         }
                         else{
                             Last_Length = Master.Linear_Data[i];
+                            Ticks_Set = true;
                         }
                     }
+                    else if(Master.Linear_Data[i] == 0xE1){
+                        Master.Linear_Data.RemoveRange(i,2);
+                        end -= 2;
+                        is_argument = FindValidLoopLocations(start,end);
+                        i--;
+                        Found_Final_Loop = true;
+                    }
                     else if(Master.Linear_Data[i] < 0x80){
-                        if(Last_Envelope_Pointer >= 0 || Last_Volume_Pointer >= 0){
+                        if(Found_Final_Loop || Last_Envelope_Pointer >= 0 || Last_Volume_Pointer >= 0){
                             if(SoundChannel == (int)Soundchannel.Triangle || SoundChannel == (int)Soundchannel.DPCM){  //Triangle or DPCM. No volume control
                                 if(Last_Envelope_Pointer >=0){
                                     Master.Linear_Data[Last_Envelope_Pointer + 1] = 0x05;
                                     Last_Envelope_Pointer = -1;
                                     Last_Volume_Pointer = -1;
+                                    Found_Final_Loop = false;
+                                    Ticks_Set = false;
                                     continue;
                                 }
                             }
-                            List<byte> matches = MatchEnvelope(Last_Instrument,Last_Volume);
+                            List<byte> matches;
+                            if(Last_Volume < 0){
+                                matches = MatchEnvelope(Last_Instrument,0xf);
+                            }
+                            else{
+                                matches = MatchEnvelope(Last_Instrument,Last_Volume);
+                            }
                             if(matches.Count == 0){
                                 Console.WriteLine(Last_Envelope_Pointer);
                                 Console.WriteLine(Last_Volume_Pointer);
                                 return;  //DEBUG. Exit early to dump data and find the problem
                             }
                             if(Last_Envelope_Pointer >= 0){
-                                if(matches[0] != Prev_Matches[0]){
+                                if(Found_Final_Loop || matches[0] != Prev_Matches[0]){
                                     Master.Linear_Data[Last_Envelope_Pointer + 1] = matches[0];
                                 }
                                 else{
@@ -271,7 +295,7 @@ namespace NinjaGaidenMusicConverty
                                 }
                             }
                             else{
-                                if(matches[0] != Prev_Matches[0]){
+                                if(Found_Final_Loop || matches[0] != Prev_Matches[0]){
                                     Master.Linear_Data.Insert(i,0xE0);
                                     Master.Linear_Data.Insert(i+1,matches[0]);
                                     end+=2;
@@ -281,7 +305,7 @@ namespace NinjaGaidenMusicConverty
                                 }
                             }
                             if(Last_Volume_Pointer >= 0){
-                                if(matches[1] != Prev_Matches[1]){
+                                if(Found_Final_Loop || matches[1] != Prev_Matches[1]){
                                     Master.Linear_Data[Last_Volume_Pointer + 1] = matches[1];
                                 }
                                 else{
@@ -293,7 +317,7 @@ namespace NinjaGaidenMusicConverty
                                 }
                             }
                             else{
-                                if(matches[1] != Prev_Matches[1]){
+                                if(Found_Final_Loop || matches[1] != Prev_Matches[1]){
                                     Master.Linear_Data.Insert(i,0xE3);
                                     Master.Linear_Data.Insert(i+1,matches[1]);
                                     end+=2;
@@ -302,8 +326,17 @@ namespace NinjaGaidenMusicConverty
                                     i+=2;
                                 }
                             }
+                            if(Found_Final_Loop && !Ticks_Set){
+                                Master.Linear_Data.Insert(i,(byte)Last_Length);
+                                end++;
+                                is_argument = FindValidLoopLocations(start,end);
+                                i++;
+                            }
                             Prev_Matches = matches;
+                            Found_Final_Loop = false;
+                            
                         }
+                        Ticks_Set = false;
                         Last_Envelope_Pointer = -1;
                         Last_Volume_Pointer = -1;
                     }
@@ -572,13 +605,22 @@ namespace NinjaGaidenMusicConverty
                     Bytes.Add(0xE4);
                     Bytes.Add(0xA6);
                     break;
-                case "B":	//Loop condition ****.  May edit this later
+                case "B":	//Loop condition.  May edit this later
                     Master.Final_Loop_Measure = (byte)sfx.Argument;
                     break;
                 case "W":   //DPCM playback speed override
 					break;
+                case "P":   //Detune
+                    Bytes.Add(0xE5);
+                    Bytes.Add((byte)(sfx.Argument - 0x80));
+                    break;
+                case "D":   //skip the rest of the measure and go to the next one.
+                    break;
+                case "X":   //Retrigger DPCM. Not sure how to incorporate this yet.
+                    break;
                 default:
-                    throw new Exception();
+                    string error_message = "Unknown Effect " + sfx.Effect_Prefix;
+                    throw new Exception(error_message);
             }
 
             return Bytes;

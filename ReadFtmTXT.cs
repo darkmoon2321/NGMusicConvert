@@ -16,9 +16,9 @@ public class ReadFtmTXT
 
         bool Found_Tracks_Header = false;
 		Master.Measure_Length = 0;
-		bool Measure_Length_Found = false;
+		Master.Measure_Lengths = new List<int>();
         bool Pattern_Read = false;
-        int PatternNo = 0;
+        //int PatternNo = 0;
         List<byte> Instrument_Order = new List<byte>();
         List<byte> Instrument_Macros = new List<byte>();
         Master.Macros = new List<List<byte>>();
@@ -88,8 +88,8 @@ public class ReadFtmTXT
                 if (lineOfText.Contains("PATTERN "))
                 {
                     int Length = "PATTERN ".Length;
-                    PatternNo = MyConvert.HexToDec(lineOfText.Substring(Length, lineOfText.Length - Length));
-
+                    //PatternNo = MyConvert.HexToDec(lineOfText.Substring(Length, lineOfText.Length - Length));
+					Master.Measure_Length = 0;
                     Pattern_Read = true;
                     continue;
                 }
@@ -137,11 +137,19 @@ public class ReadFtmTXT
                             }
                         }
                         EntireMeasure[SoundChannel++].Add(new SequenceLine(Note, Instrument, Volume, l_effect));
+                        foreach(Effect sfx in l_effect){
+							if(sfx.Effect_Prefix == "D"){
+								Pattern_Read = false;
+							}
+						}
                     }
-                    if(!Measure_Length_Found) Master.Measure_Length++;
+                    Master.Measure_Length++;
                 }
                 else
                 {
+					Pattern_Read = false;
+				}
+				if(!Pattern_Read){
                     int sc = 0;
                     foreach (List<SequenceLine> s in EntireMeasure)
                     {
@@ -153,7 +161,7 @@ public class ReadFtmTXT
                         EntireMeasure[i] = new List<SequenceLine>();
                     }
                     Pattern_Read = false;
-                    Measure_Length_Found = true;
+                    Master.Measure_Lengths.Add(Master.Measure_Length);
                 }
             }
         }
