@@ -19,6 +19,10 @@ public class ReadFtmTXT
 		bool Measure_Length_Found = false;
         bool Pattern_Read = false;
         int PatternNo = 0;
+        List<byte> Instrument_Order = new List<byte>();
+        List<byte> Instrument_Macros = new List<byte>();
+        Master.Macros = new List<List<byte>>();
+        Master.Instrument_Envelopes = new List<List<byte>>();
         for(int i = 0; i < Constants.Sound_Channels;i++){
 			Master.Measure_Order[i] = new List<byte>();
 			Master.Final_Note[i] = new List<byte>();
@@ -53,6 +57,27 @@ public class ReadFtmTXT
                     position += 3;
                 }
             }
+            else if (lineOfText.Contains("MACRO ")){
+				int position = 6;
+				if(Master.getByteFromDecimalText(lineOfText,ref position) == 0){
+					position = lineOfText.IndexOf(":");
+					position += 2;
+					byte decimal_value = Master.getByteFromDecimalText(lineOfText,ref position);
+					List<byte> Macro_Values = new List<byte>();
+					while(position < lineOfText.Length){
+						Macro_Values.Add(decimal_value);
+						decimal_value = Master.getByteFromDecimalText(lineOfText,ref position);
+					}
+					byte final_value = Macro_Values[Macro_Values.Count - 1];
+					for(int i = Macro_Values.Count; i < 0x100;i++) Macro_Values.Add(final_value);	//continue to extend the volume envelope if the note continues.
+					Master.Macros.Add(Macro_Values);
+				}
+			}
+            else if (lineOfText.Contains("INST2A03")){
+				int position = 8;
+				Instrument_Order.Add(Master.getByteFromDecimalText(lineOfText,ref position));
+				Instrument_Macros.Add(Master.getByteFromDecimalText(lineOfText,ref position));
+			}
             else if (lineOfText.Contains("TRACK"))
             {
                 string[] Splitted = lineOfText.Split(new[] { " " }, StringSplitOptions.RemoveEmptyEntries);
@@ -132,5 +157,13 @@ public class ReadFtmTXT
                 }
             }
         }
+        for(int i=0;i<Instrument_Order.Count;i++){
+			for(int j=0;j<Instrument_Order.Count;j++){
+				if(Instrument_Order[j] == i){
+					Master.Instrument_Envelopes.Add(Master.Macros[Instrument_Macros[j]]);
+					break;
+				}
+			}
+		}
     }
 }

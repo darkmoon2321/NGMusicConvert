@@ -5,6 +5,14 @@ using System;
 public static class Master
 {
     public static List<SequenceLine[]>[] Measures = new List<SequenceLine[]>[Constants.Sound_Channels];
+    public static List<List<byte>> Instrument_Envelopes;
+    public static List<List<byte>> Macros;
+    public static List<List<byte>> Envelope_Volumes;
+    public static List<List<byte>> Envelope_Lengths;
+    public static List<byte> Instrument_Envelope_Conversions;
+    public static List<byte> Instrument_Initial_Volumes;
+    public static List<byte> ROM_Data;
+    public static string ROM_Path;
     public static List<byte>[] Measure_Order = new List<byte>[Constants.Sound_Channels];
     public static int Measure_Length;
     public static int Speed;
@@ -40,6 +48,20 @@ public static class Master
             if(digit > 0xf) return 0xff;
             result <<= 4;
             result |= digit;
+        }
+        return result;
+    }
+    public static byte getByteFromDecimalText(string text,ref int pos){
+        byte result = 0;
+        byte digit;
+        while((pos < text.Length) && (text[pos] == ' ')) pos++;
+        for(int i=0;i<2;i++){
+            if(pos >= text.Length) return result;
+		    digit = (byte)text[pos++];
+            if((digit > 57) || (digit < 48)) return result;
+            digit -= 48;
+            result *= 10;
+            result += digit;
         }
         return result;
     }

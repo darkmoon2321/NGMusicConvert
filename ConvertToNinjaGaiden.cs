@@ -1,4 +1,5 @@
 ﻿using System;
+using System.IO;
 using System.Collections.Generic;
 
 namespace NinjaGaidenMusicConverty
@@ -13,9 +14,21 @@ namespace NinjaGaidenMusicConverty
             Noise,
             DPCM
         }
-
+        
         public void Convert()
         {
+            BinaryReader br;
+            try{
+                br = new BinaryReader(new FileStream(Master.ROM_Path, FileMode.Open));
+            } catch (IOException e) {
+                Console.WriteLine(e.Message + "\n Cannot open file.");
+                return;
+            }
+            Master.ROM_Data = new List<byte>();
+            while(br.BaseStream.Position != br.BaseStream.Length){
+                Master.ROM_Data.Add((byte)br.ReadByte());
+            }
+            GetVolumeEnvelopes();
             int SoundChannel = 0;
             int j;
             foreach (List<SequenceLine[]> ll_seq in Master.Measures)
@@ -26,11 +39,13 @@ namespace NinjaGaidenMusicConverty
                 foreach (SequenceLine[] Measure in ll_seq)
                 {
                     int Prev_Length = 0;
-                    int Curr_Length = 0;
+                    int Curr_Length = 0,
+                        Current_Instrument = 0xff,
+                        Prev_Instrument = 0xff;
                     byte Current_Note = 0,
                         Prev_Note,
-                        Prev_Volume = 0xF,
-                        Current_Volume = 0xF;
+                        Prev_Volume = 0xFF,
+                        Current_Volume = 0xFF;
                         
                     Prev_Note = (SoundChannel == 3)? (byte)0x10 : (byte)0x0C;
                     string s_Current_Note = "";
@@ -68,6 +83,14 @@ namespace NinjaGaidenMusicConverty
                         }
                         Current_SFX = Measure[i].Effects;
                         
+                        if (Measure[i].Instrument != Constants.b_NULL){
+                            Current_Instrument = Measure[i].Instrument;
+                            if(Current_Instrument < 0) Current_Instrument = Prev_Instrument;
+                        }
+                        else{
+                            Current_Instrument = Prev_Instrument;
+                        }
+                        
                         if (IsBlank)
                         {
                             Curr_Length++;
@@ -89,6 +112,10 @@ namespace NinjaGaidenMusicConverty
                         Curr_Length = 0;
                         TickPointer = MeasureBytes.Count;
                         
+                        if ((Current_Instrument != Prev_Instrument) && (Current_Instrument>=0)){
+                            MeasureBytes.Add(0xE0);
+                            MeasureBytes.Add((byte)Current_Instrument);
+                        }
                         //add volume code if volume changes
                         if (Current_Volume != Prev_Volume)
                         {
@@ -108,7 +135,7 @@ namespace NinjaGaidenMusicConverty
                                 }
                             }
                         }
-                        if(SoundChannel == 4){ //Constants.Channel.DPCM){
+                        if(SoundChannel == (int)Soundchannel.DPCM){
                             if(Current_Note == 0x20){
                                 MeasureBytes.Add(0xFB);
                                 MeasureBytes.Add(0x02);
@@ -123,6 +150,7 @@ namespace NinjaGaidenMusicConverty
                             MeasureBytes.Add(Current_Note);
                         }
                         Prev_Note = Current_Note;
+                        Prev_Instrument = Current_Instrument;
                         Current_Note = 0;
                         //ignore empty volumes.
                         if (Current_Volume != Constants.b_NULL)
@@ -156,11 +184,15 @@ namespace NinjaGaidenMusicConverty
             }
             
             for(SoundChannel = 0;SoundChannel < Constants.Sound_Channels;SoundChannel++){
-                byte Prev_Note = (byte)((SoundChannel == 3) ? 0x10 : 0x0C);
-                int MeasureNum;
+                List<bool> is_argument;
+                byte Prev_Note = (byte)((SoundChannel == (int)Soundchannel.Noise) ? 0x10 : 0x0C);
+                int Last_Instrument = 0;
+                int Last_Length = -1;
+                int Last_Volume = -1;
+                int MeasureNum, start, end;
+                int Last_Envelope_Pointer = -1;
+                int Last_Volume_Pointer = -1;
                 Master.Linear_Channel_Pointers[SoundChannel] = Master.Linear_Data.Count;
-                Master.Linear_Data.Add(0xE0);   //*****Set volume envelope
-                Master.Linear_Data.Add(0x05);   //*****Change this later on to be dependent on instrument envelope setting
                 for(int i = 0;i < Master.Measure_Order[SoundChannel].Count;i ++){
                     MeasureNum = Master.Measure_Order[SoundChannel][i];
                     if(i == Master.Final_Loop_Measure){
@@ -178,17 +210,114 @@ namespace NinjaGaidenMusicConverty
                         Prev_Note = Master.Final_Note[SoundChannel][MeasureNum];
                     }
                 }
+                start = Master.Linear_Channel_Pointers[SoundChannel];
+                end = Master.Linear_Data.Count;
+                is_argument = FindValidLoopLocations(start,end);
+                List<byte> Prev_Matches = new List<byte>();
+                Prev_Matches.Add(0xff);
+                Prev_Matches.Add(0xff);
+                Last_Volume = -1;
+                Last_Instrument = -1;
+                for(int i = start;i<end;i++){
+                    if(is_argument[i - start]) continue;
+                    if(Master.Linear_Data[i] == 0xE0){
+                        Last_Envelope_Pointer = i;
+                        Last_Instrument = Master.Linear_Data[i+1];
+                    }
+                    else if(Master.Linear_Data[i] == 0xE3){
+                        Last_Volume_Pointer = i;
+                        Last_Volume = Master.Linear_Data[i+1];
+                    }
+                    else if(Master.Linear_Data[i] >= 0x80 && Master.Linear_Data[i] < 0xE0){
+                        if(Master.Linear_Data[i] == Last_Length){
+                            Master.Linear_Data.RemoveAt(i); //Remove redundant tick count commands
+                            end -= 1;
+                            is_argument = FindValidLoopLocations(start,end);
+                            if(i < Master.Measure_Loop_Pointers[SoundChannel]) Master.Measure_Loop_Pointers[SoundChannel]--;
+                            i--;
+                        }
+                        else{
+                            Last_Length = Master.Linear_Data[i];
+                        }
+                    }
+                    else if(Master.Linear_Data[i] < 0x80){
+                        if(Last_Envelope_Pointer >= 0 || Last_Volume_Pointer >= 0){
+                            if(SoundChannel == (int)Soundchannel.Triangle || SoundChannel == (int)Soundchannel.DPCM){  //Triangle or DPCM. No volume control
+                                if(Last_Envelope_Pointer >=0){
+                                    Master.Linear_Data[Last_Envelope_Pointer + 1] = 0x05;
+                                    Last_Envelope_Pointer = -1;
+                                    Last_Volume_Pointer = -1;
+                                    continue;
+                                }
+                            }
+                            List<byte> matches = MatchEnvelope(Last_Instrument,Last_Volume);
+                            if(matches.Count == 0){
+                                Console.WriteLine(Last_Envelope_Pointer);
+                                Console.WriteLine(Last_Volume_Pointer);
+                                return;  //DEBUG. Exit early to dump data and find the problem
+                            }
+                            if(Last_Envelope_Pointer >= 0){
+                                if(matches[0] != Prev_Matches[0]){
+                                    Master.Linear_Data[Last_Envelope_Pointer + 1] = matches[0];
+                                }
+                                else{
+                                    Master.Linear_Data.RemoveRange(Last_Envelope_Pointer,2);    //Remove redundant envelope setting
+                                    end -= 2;
+                                    if(Last_Volume_Pointer >= 0 && Last_Volume_Pointer > Last_Envelope_Pointer) Last_Volume_Pointer -= 2;
+                                    is_argument = FindValidLoopLocations(start,end);
+                                    if(i < Master.Measure_Loop_Pointers[SoundChannel]) Master.Measure_Loop_Pointers[SoundChannel]-=2;
+                                    i-=2;
+                                    
+                                }
+                            }
+                            else{
+                                if(matches[0] != Prev_Matches[0]){
+                                    Master.Linear_Data.Insert(i,0xE0);
+                                    Master.Linear_Data.Insert(i+1,matches[0]);
+                                    end+=2;
+                                    is_argument = FindValidLoopLocations(start,end);
+                                    if(i < Master.Measure_Loop_Pointers[SoundChannel]) Master.Measure_Loop_Pointers[SoundChannel]+=2;
+                                    i+=2;
+                                }
+                            }
+                            if(Last_Volume_Pointer >= 0){
+                                if(matches[1] != Prev_Matches[1]){
+                                    Master.Linear_Data[Last_Volume_Pointer + 1] = matches[1];
+                                }
+                                else{
+                                    Master.Linear_Data.RemoveRange(Last_Volume_Pointer,2);      //Remove redundant volume setting
+                                    end -= 2;
+                                    is_argument = FindValidLoopLocations(start,end);
+                                    if(i < Master.Measure_Loop_Pointers[SoundChannel]) Master.Measure_Loop_Pointers[SoundChannel]-=2;
+                                    i-=2;
+                                }
+                            }
+                            else{
+                                if(matches[1] != Prev_Matches[1]){
+                                    Master.Linear_Data.Insert(i,0xE3);
+                                    Master.Linear_Data.Insert(i+1,matches[1]);
+                                    end+=2;
+                                    if(i < Master.Measure_Loop_Pointers[SoundChannel]) Master.Measure_Loop_Pointers[SoundChannel]+=2;
+                                    is_argument = FindValidLoopLocations(start,end);
+                                    i+=2;
+                                }
+                            }
+                            Prev_Matches = matches;
+                        }
+                        Last_Envelope_Pointer = -1;
+                        Last_Volume_Pointer = -1;
+                    }
+                }
                 FindLocalLoops((byte)SoundChannel, Master.Linear_Channel_Pointers[SoundChannel], Master.Measure_Loop_Pointers[SoundChannel]);
                 FindLocalLoops((byte)SoundChannel, Master.Measure_Loop_Pointers[SoundChannel],Master.Linear_Data.Count);
                 int Loop_Start, 
                 Loop_Check,
                 k,
-                Max_Length,
-                start;
+                Max_Length;
                 
                 start = Master.Linear_Channel_Pointers[SoundChannel];
                 
-                List<bool> is_argument = FindValidLoopLocations(start,Master.Linear_Data.Count);
+                is_argument = FindValidLoopLocations(start,Master.Linear_Data.Count);
                 bool Local_Loop;
                 int Local_Loop_Start;
                 for(Loop_Start = Master.Linear_Channel_Pointers[SoundChannel] ; Loop_Start < Master.Linear_Data.Count;Loop_Start++){
@@ -254,7 +383,6 @@ namespace NinjaGaidenMusicConverty
                         start += pattern.Count + 1;
                         Loop_Start += pattern.Count + 1;
                         is_argument = FindValidLoopLocations(Master.Linear_Channel_Pointers[SoundChannel],Master.Linear_Data.Count);
-                        
                     }
                 }
                 
@@ -354,20 +482,12 @@ namespace NinjaGaidenMusicConverty
                 Max_Total_Length;
             List<bool> is_argument = FindValidLoopLocations(start,end);
             
-            //Console.WriteLine(Master.convertByteToHexString((byte)(Master.Linear_Data.Count>>8)) + Master.convertByteToHexString((byte)Master.Linear_Data.Count));
             for(Loop_Start = start ; Loop_Start < end;Loop_Start++){
-                //Console.WriteLine(Master.convertByteToHexString((byte)(Loop_Start>>8)) + Master.convertByteToHexString((byte)Loop_Start));
                 if(is_argument[Loop_Start - start]) continue;   //Don't search for loops that would start within a command's arguments
                 Loop_Length = 1;
                 Max_Total_Length = 0;
                 Max_Length = 0;
                 Max_Loops = 0;
-                /*Console.WriteLine(Loop_Start);
-                Console.WriteLine(Master.Linear_Data.Count);
-                Console.WriteLine(is_argument.Count);
-                if(Loop_Start == 0x8A){
-                    Console.WriteLine("1st major local loop should be here.");
-                }*/
                 while(Loop_Length <= ((end - Loop_Start)>>1)){
                     Num_Loops = 0xFF;
                     if((Loop_Start - start + Loop_Length) >= is_argument.Count) break;
@@ -375,9 +495,6 @@ namespace NinjaGaidenMusicConverty
                         Loop_Length++;
                         continue;
                     }
-                    /*if(Loop_Start == 0x8A){
-                        Console.WriteLine("Passed argument testing.");
-                    }*/
                     for(j=0;j<Loop_Length;j++){
                         for(k=1;k<Num_Loops;k++){
                             if(((Loop_Start + j + (Loop_Length*k)) >= end) || 
@@ -392,9 +509,6 @@ namespace NinjaGaidenMusicConverty
                         Max_Total_Length = Num_Loops*Loop_Length;
                         Max_Length = Loop_Length;
                         Max_Loops = Num_Loops;
-                        //string text_debug = Master.convertByteToHexString((byte)(Max_Total_Length>>8)) + Master.convertByteToHexString((byte)Max_Total_Length) +
-                        //    " , loops: " + Master.convertByteToHexString((byte)Max_Loops) + ", Length " + Master.convertByteToHexString((byte)Max_Length);
-                        //Console.WriteLine(text_debug);
                     }
                     Loop_Length++;
                 }
@@ -512,16 +626,17 @@ namespace NinjaGaidenMusicConverty
 
         private List<byte> GetVolume(int volume)
         {
-            if (volume == 15)
+            /*if (volume == 15)
             {
                 volume--;
-            }
+            }*/
 
             List<byte> ReturnMe = new List<byte>();
             if (volume != Constants.NULL)
             {
                 ReturnMe.Add(0xE3);
-                ReturnMe.Add((byte)(0x0F - (volume + 1)));
+                //ReturnMe.Add((byte)(0x0F - (volume + 1)));
+                ReturnMe.Add((byte)volume);
             }
 
             return ReturnMe;
@@ -603,6 +718,91 @@ namespace NinjaGaidenMusicConverty
             else isBlank = true;
 
             return (byte)((FirstNibble << 4) + LastNibble);
+        }
+        private void GetVolumeEnvelopes(){
+            int Pointer_List = (Master.ROM_Offset >= 0x1C010) ? 0x1C5C1 : 0xC5C1;
+            int Current_Pointer;
+            Current_Pointer = Master.ROM_Data[Pointer_List++];
+            Current_Pointer |= (Master.ROM_Data[Pointer_List++]<<8) | 0x4000;
+            Current_Pointer += (Master.ROM_Offset >= 0x1C010) ? 0x10010 : 0x10;
+            int Min_Pointer = Current_Pointer;
+            int Total_Length;
+            Master.Envelope_Lengths = new List<List<byte>>();
+            Master.Envelope_Volumes = new List<List<byte>>();
+            Master.Instrument_Envelope_Conversions = new List<byte>();
+            Master.Instrument_Initial_Volumes = new List<byte>();
+            while(Pointer_List < Min_Pointer){
+                Total_Length = 0;
+                List<byte> Lengths = new List<byte>();
+                List<byte> Volumes = new List<byte>();
+                while(Total_Length < 0x100){
+                    Total_Length += Master.ROM_Data[Current_Pointer];
+                    Lengths.Add(Master.ROM_Data[Current_Pointer++]);
+                    Volumes.Add(Master.ROM_Data[Current_Pointer++]);
+                }
+                Master.Envelope_Lengths.Add(Lengths);
+                Master.Envelope_Volumes.Add(Volumes);
+                Current_Pointer = Master.ROM_Data[Pointer_List++];
+                Current_Pointer |= (Master.ROM_Data[Pointer_List++]<<8) | 0x4000;
+                Current_Pointer += (Master.ROM_Offset >= 0x1C010) ? 0x10010 : 0x10;
+                if(Current_Pointer < Min_Pointer) Min_Pointer = Current_Pointer;
+            }
+        }
+        private List<byte> MatchEnvelope(int instrument, int volume){
+            List<byte> result = new List<byte>();
+            int j,k;
+            int initial_volume, min_diff, current_diff, best_volume,best_envelope,ticks_remaining,envelope_offset,envelope_volume;
+            
+            min_diff = 0xffffff;
+            best_envelope = 0;
+            best_volume = 0;
+            
+            if(instrument >= Master.Instrument_Envelopes.Count || (volume > 0xF) || (volume < 0)) return result;  //DEBUG, pass empty list
+            
+            if(Master.Instrument_Envelopes[instrument].Count == 0){
+                result.Add(0x05);
+                volume = 0xE - volume;
+                if(volume < 0) volume = 0;
+                result.Add((byte)volume);
+                return result;
+            }
+            
+            for(k=0;k<Master.Envelope_Lengths.Count;k++){
+                 //Final volume can never be higher than NG envelope volume.
+                if(Constants.Volume_Table[Master.Instrument_Envelopes[instrument][0],volume] > Master.Envelope_Volumes[k][0]) continue;
+                //Match the initial volume
+                initial_volume = Master.Envelope_Volumes[k][0] - Constants.Volume_Table[Master.Instrument_Envelopes[instrument][0],volume];
+                current_diff = 0;
+                ticks_remaining = 0;
+                envelope_offset = -1;
+                envelope_volume = 0;
+                for(j=0;j<Master.Instrument_Envelopes[instrument].Count;j++){
+                    if(ticks_remaining == 0){
+                        envelope_offset++;
+                        ticks_remaining = Master.Envelope_Lengths[k][envelope_offset];
+                        envelope_volume = Master.Envelope_Volumes[k][envelope_offset];
+                    }
+                    if(initial_volume >= envelope_volume){
+                        current_diff += Constants.Volume_Table[Master.Instrument_Envelopes[instrument][j],volume];
+                    }
+                    else if((Constants.Volume_Table[Master.Instrument_Envelopes[instrument][j],volume] + initial_volume) > envelope_volume){
+                        current_diff += (initial_volume + Constants.Volume_Table[Master.Instrument_Envelopes[instrument][j],volume]) - envelope_volume;
+                    }
+                    else{
+                        current_diff += envelope_volume - initial_volume - Constants.Volume_Table[Master.Instrument_Envelopes[instrument][j],volume];
+                    }
+                    ticks_remaining--;
+                }
+                if(current_diff < min_diff){
+                    min_diff = current_diff;
+                    best_volume = initial_volume;
+                    best_envelope = k;
+                }
+            }
+            if(best_volume > 0) best_volume--;
+            result.Add((byte)best_envelope);
+            result.Add((byte)best_volume);
+            return result;
         }
     }
 }

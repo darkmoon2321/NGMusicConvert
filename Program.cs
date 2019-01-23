@@ -19,6 +19,16 @@ namespace NinjaGaidenMusicConverty
                 //Get the path of specified file
                 Path = openFileDialog.FileName;
             }
+            else return;
+            OpenFileDialog romFileDialog = new OpenFileDialog();
+            romFileDialog.Filter = "ROM files (*.nes)|*.nes|All files (*.*)|*.*";
+            romFileDialog.RestoreDirectory = true;
+            if (romFileDialog.ShowDialog() == DialogResult.OK)
+            {
+                //Get the path of specified file
+                Master.ROM_Path = romFileDialog.FileName;
+            }
+            else return;
             
             ReadFtmTXT.Read(Path);
             ConvertToNinjaGaiden ng = new ConvertToNinjaGaiden();
