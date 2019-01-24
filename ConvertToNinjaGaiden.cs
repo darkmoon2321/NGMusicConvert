@@ -29,6 +29,12 @@ namespace NinjaGaidenMusicConverty
                 Master.ROM_Data.Add((byte)br.ReadByte());
             }
             GetVolumeEnvelopes();
+            try{
+                br.Close();
+                br.Dispose();
+            } catch(Exception e){
+                Console.WriteLine("Could not close file.");
+            }
             int SoundChannel = 0;
             int j;
             foreach (List<SequenceLine[]> ll_seq in Master.Measures)
@@ -181,8 +187,9 @@ namespace NinjaGaidenMusicConverty
                 }
                 SoundChannel++;
             }
-            
+            Console.WriteLine("Initial processing complete.  Ordering data...");
             for(SoundChannel = 0;SoundChannel < Constants.Sound_Channels;SoundChannel++){
+                Console.WriteLine("Starting channel " + Master.convertByteToHexString((byte)SoundChannel));
                 List<bool> is_argument;
                 byte Prev_Note = (byte)((SoundChannel == (int)Soundchannel.Noise) ? 0x10 : 0x0C);
                 int Last_Instrument = 0;
@@ -192,7 +199,7 @@ namespace NinjaGaidenMusicConverty
                 int Last_Envelope_Pointer = -1;
                 int Last_Volume_Pointer = -1;
                 Master.Linear_Channel_Pointers[SoundChannel] = Master.Linear_Data.Count;
-                for(int i = 0;i < Master.Measure_Order[SoundChannel].Count;i ++){
+                for(int i = 0;i < Master.Measure_Order[SoundChannel].Count;i++){
                     MeasureNum = Master.Measure_Order[SoundChannel][i];
                     if(i == Master.Final_Loop_Measure){
                         Master.Measure_Loop_Pointers[SoundChannel] = Master.Linear_Data.Count;
@@ -216,6 +223,7 @@ namespace NinjaGaidenMusicConverty
                         Prev_Note = Master.Final_Note[SoundChannel][MeasureNum];
                     }
                 }
+                Console.WriteLine("Linearized.  Optimizing volume envelopes...");
                 start = Master.Linear_Channel_Pointers[SoundChannel];
                 end = Master.Linear_Data.Count;
                 is_argument = FindValidLoopLocations(start,end);
@@ -265,8 +273,8 @@ namespace NinjaGaidenMusicConverty
                                     Last_Volume_Pointer = -1;
                                     Found_Final_Loop = false;
                                     Ticks_Set = false;
-                                    continue;
                                 }
+                                continue;
                             }
                             List<byte> matches;
                             if(Last_Volume < 0){
@@ -341,8 +349,10 @@ namespace NinjaGaidenMusicConverty
                         Last_Volume_Pointer = -1;
                     }
                 }
+                Console.WriteLine("Searching for Loops and Patterns...");
                 FindLocalLoops((byte)SoundChannel, Master.Linear_Channel_Pointers[SoundChannel], Master.Measure_Loop_Pointers[SoundChannel]);
                 FindLocalLoops((byte)SoundChannel, Master.Measure_Loop_Pointers[SoundChannel],Master.Linear_Data.Count);
+                Console.WriteLine("Done searching for local loops...");
                 int Loop_Start, 
                 Loop_Check,
                 k,
@@ -418,7 +428,7 @@ namespace NinjaGaidenMusicConverty
                         is_argument = FindValidLoopLocations(Master.Linear_Channel_Pointers[SoundChannel],Master.Linear_Data.Count);
                     }
                 }
-                
+                Console.WriteLine("Done looking for patterns.  Terminating track...");
                 if(Master.Final_Loop_Measure == 0xff){
                     Master.Linear_Data.Add(0xFF); //Terminate the track if it does not Loop
                 }
@@ -430,6 +440,7 @@ namespace NinjaGaidenMusicConverty
                     Master.Linear_Data.Add((byte)Final_Loop_Pointer);
                     Master.Linear_Data.Add((byte)(Final_Loop_Pointer >> 8));
                 }
+                Console.WriteLine("Channel Done!");
             }
             for(j = 0;j< Constants.Sound_Channels;j++){
                 Master.Linear_Data.Insert(j*3,Constants.Music_Channels[j]);
@@ -444,6 +455,7 @@ namespace NinjaGaidenMusicConverty
             for(j=0;j<Master.Linear_Data.Count;j++) Master.ROM_Data[Master.ROM_Offset + j] = Master.Linear_Data[j];
             BinaryWriter writer = new BinaryWriter(File.Open(Master.ROM_Path, FileMode.Create));
             for(j=0;j<Master.ROM_Data.Count;j++) writer.Write(Master.ROM_Data[j]);
+            Console.WriteLine("Finished!");
         }
         
         private List<bool> FindValidLoopLocations(int start,int end){
@@ -606,7 +618,7 @@ namespace NinjaGaidenMusicConverty
                     Bytes.Add(0xA6);
                     break;
                 case "B":	//Loop condition.  May edit this later
-                    Master.Final_Loop_Measure = (byte)sfx.Argument;
+                    
                     break;
                 case "W":   //DPCM playback speed override
 					break;
@@ -774,8 +786,6 @@ namespace NinjaGaidenMusicConverty
             int Total_Length;
             Master.Envelope_Lengths = new List<List<byte>>();
             Master.Envelope_Volumes = new List<List<byte>>();
-            Master.Instrument_Envelope_Conversions = new List<byte>();
-            Master.Instrument_Initial_Volumes = new List<byte>();
             while(Pointer_List < Min_Pointer){
                 Total_Length = 0;
                 List<byte> Lengths = new List<byte>();
@@ -803,6 +813,7 @@ namespace NinjaGaidenMusicConverty
             best_volume = 0;
             
             if(instrument >= Master.Instrument_Envelopes.Count || (volume > 0xF) || (volume < 0)) return result;  //DEBUG, pass empty list
+            if(instrument < 0) return result;   //DEBUG, pass empty list
             
             if(Master.Instrument_Envelopes[instrument].Count == 0){
                 result.Add(0x05);

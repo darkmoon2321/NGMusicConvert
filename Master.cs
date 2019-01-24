@@ -10,8 +10,6 @@ public static class Master
     public static List<List<byte>> Macros;
     public static List<List<byte>> Envelope_Volumes;
     public static List<List<byte>> Envelope_Lengths;
-    public static List<byte> Instrument_Envelope_Conversions;
-    public static List<byte> Instrument_Initial_Volumes;
     public static List<byte> ROM_Data;
     public static string ROM_Path;
     public static List<byte>[] Measure_Order = new List<byte>[Constants.Sound_Channels];

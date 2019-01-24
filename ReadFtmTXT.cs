@@ -141,6 +141,9 @@ public class ReadFtmTXT
 							if(sfx.Effect_Prefix == "D"){
 								Pattern_Read = false;
 							}
+							if(sfx.Effect_Prefix == "B"){
+								Master.Final_Loop_Measure = (byte)sfx.Argument;
+							}
 						}
                     }
                     Master.Measure_Length++;
